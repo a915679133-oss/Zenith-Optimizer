@@ -1,14 +1,15 @@
--- LocalScript: Ultimate Optimization & Chunk Caching Menu
--- Вставь этот скрипт в StarterGui (создай внутри него LocalScript)
-
+-- Universal Optimization & Chunk Cache Script (Loadstring compatible)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- 1. Создаем интерфейс (GUI)
+if playerGui:FindFirstChild("UniversalOptimizationMenu") then
+	playerGui.UniversalOptimizationMenu:Destroy()
+end
+
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "OptimizationMenu"
+screenGui.Name = "UniversalOptimizationMenu"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
@@ -17,6 +18,8 @@ mainFrame.Size = UDim2.new(0, 320, 0, 260)
 mainFrame.Position = UDim2.new(0, 50, 0, 150)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
 mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
 mainFrame.Parent = screenGui
 
 local uiCorner = Instance.new("UICorner")
@@ -26,13 +29,12 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 40)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "⚙️ Меню оптимизации"
+titleLabel.Text = "Zenith-Optimizer"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 18
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.Parent = mainFrame
 
--- Функция для создания красивых переключателей (Toggle)
 local function createToggle(name, posY, callback)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(0, 200, 0, 30)
@@ -74,67 +76,60 @@ local function createToggle(name, posY, callback)
 	end)
 end
 
--- Переменные состояний
 local texturesReplaced = false
 local chunkCachingActive = false
 local whiteModeActive = false
 
--- Таблицы для сохранения исходных данных объектов и кэша
 local modifiedParts = {}
 local visitedChunks = {}
 
--- ПЛАВНАЯ замена текстур/материалов порциями (по 50 объектов за кадр, чтобы не было лагов)
 local function smoothReplaceTextures(enable, targetColorMode)
 	task.spawn(function()
 		local descendants = workspace:GetDescendants()
 		local batchSize = 50 
 		
 		for i, obj in ipairs(descendants) do
-			if obj:IsA("BasePart") then
-				if enable then
-					-- Сохраняем исходные свойства, если еще не сохраняли
-					if not modifiedParts[obj] then
-						modifiedParts[obj] = {
-							Material = obj.Material,
-							Color = obj.Color,
-							CastShadow = obj.CastShadow
-						}
+			pcall(function()
+				if obj:IsA("BasePart") then
+					if enable then
+						if not modifiedParts[obj] then
+							modifiedParts[obj] = {
+								Material = obj.Material,
+								Color = obj.Color,
+								CastShadow = obj.CastShadow
+							}
+						end
+						
+						if targetColorMode == "simplified" then
+							obj.Material = Enum.Material.SmoothPlastic
+							obj.CastShadow = false
+						elseif targetColorMode == "white" then
+							obj.Material = Enum.Material.SmoothPlastic
+							obj.Color = Color3.fromRGB(240, 240, 240)
+							obj.CastShadow = true
+						end
+					else
+						local data = modifiedParts[obj]
+						if data then
+							obj.Material = data.Material
+							obj.Color = data.Color
+							obj.CastShadow = data.CastShadow
+						end
 					end
-					
-					if targetColorMode == "simplified" then
-						-- 1-й режим: Упрощенные материалы (гладкий пластик), тени убираем для FPS
-						obj.Material = Enum.Material.SmoothPlastic
-						obj.CastShadow = false
-					elseif targetColorMode == "white" then
-						-- 3-й режим: Белый минимализм, но тени ОСТАВЛЯЕМ (чтобы формы не сливались)
-						obj.Material = Enum.Material.SmoothPlastic
-						obj.Color = Color3.fromRGB(240, 240, 240)
-						obj.CastShadow = true
-					end
-				else
-					-- Возвращаем всё как было
-					local data = modifiedParts[obj]
-					if data then
-						obj.Material = data.Material
-						obj.Color = data.Color
-						obj.CastShadow = data.CastShadow
-					end
+				elseif obj:IsA("Texture") or obj:IsA("Decal") then
+					obj.Transparency = enable and 1 or 0
 				end
-			elseif obj:IsA("Texture") or obj:IsA("Decal") then
-				obj.Transparency = enable and 1 or 0
-			end
+			end)
 			
-			-- Пауза каждые batchSize элементов для защиты от зависаний (фризов)
 			if i % batchSize == 0 then
 				task.wait()
 			end
 		end
-		print("✨ Плавная обработка мира завершена. Статус:", enable)
+		print("Optimized ")
 	end)
 end
 
--- 1. Кнопка: Оптимизация без сохранения чанков (упрощенные текстуры)
-createToggle("1. Оптимизация текстур", 60, function(state)
+createToggle("FPS optimization(replaces textures)", 60, function(state)
 	texturesReplaced = state
 	if state then
 		if whiteModeActive then whiteModeActive = false end
@@ -144,38 +139,37 @@ createToggle("1. Оптимизация текстур", 60, function(state)
 	end
 end)
 
--- 2. Кнопка: Оптимизация через кэширование чанков
-createToggle("2. Кэш чанков", 110, function(state)
+createToggle("Loading optimizer (for fast movement on a large map)", 110, function(state)
 	chunkCachingActive = state
-	print("📦 Кэширование чанков:", state)
+	print("Preservation", state)
 	
-	local character = player.Character or player.CharacterAdded:Wait()
-	
-	if state then
-		local chunksFolder = workspace:FindFirstChild("ChunksFolder") or workspace
-		for _, chunk in ipairs(chunksFolder:GetChildren()) do
-			if chunk:IsA("Model") or chunk:IsA("Folder") then
-				local trigger = chunk:FindFirstChildWhichIsA("BasePart")
-				if trigger then
-					trigger.Touched:Connect(function(hit)
-						if hit.Parent == character then
-							local id = chunk.Name
-							if not visitedChunks[id] then
-								visitedChunks[id] = true
-								print("💾 Первый проход — чанк запечен в кэш:", id)
-							else
-								print("⚡ Повторный проход — чанк подгружен мгновенно из кэша:", id)
+	task.spawn(function()
+		while chunkCachingActive do
+			local character = player.Character
+			if character and character:FindFirstChild("HumanoidRootPart") then
+				local rootPos = character.HumanoidRootPart.Position
+				
+				for _, obj in ipairs(workspace:GetChildren()) do
+					if obj:IsA("Model") or obj:IsA("Folder") then
+						local primaryPart = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+						if primaryPart then
+							local dist = (primaryPart.Position - rootPos).Magnitude
+							if dist < 150 then
+								local id = obj.Name .. "_" .. tostring(obj)
+								if not visitedChunks[id] then
+									visitedChunks[id] = true
+								end
 							end
 						end
-					end)
+					end
 				end
 			end
+			task.wait(1)
 		end
-	end
+	end)
 end)
 
--- 3. Кнопка: Белый режим с сохранением различимости объектов (через тени)
-createToggle("3. Белый режим", 160, function(state)
+createToggle("FPS optimizer (replaces textures with white ones)", 160, function(state)
 	whiteModeActive = state
 	if state then
 		if texturesReplaced then texturesReplaced = false end
@@ -184,3 +178,5 @@ createToggle("3. Белый режим", 160, function(state)
 		smoothReplaceTextures(false, "white")
 	end
 end)
+
+print("The script has been uploaded.")
